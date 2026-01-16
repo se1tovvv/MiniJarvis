@@ -50,7 +50,7 @@ Features
 
 ### 1. Clone repo
 ```bash
-git clone https://github.com/se1tovv/minigpt.git
+git clone https://github.com/se1tovvм/minigpt.git
 2. Download Vosk models
 
 Place in /models.
