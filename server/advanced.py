@@ -302,7 +302,8 @@ def generate_reply(text: str) -> str:
         "Use the same language as the user. "
         "If unsure about facts, clearly say you don't know. "
         "Do not invent people, games or places if you are not sure. "
-        "Short, clear sentences. Year is 2026. No markdown, no lists. 
+        "Short, clear sentences. Year is 2026. No markdown, no lists." 
+    )
 
     try:
         completion = client.chat.completions.create(
