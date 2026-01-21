@@ -33,7 +33,7 @@ HISTORY_LIMIT = 10
 
 # ===== WAKE/SLEEP WORDS =====
 WAKE_WORDS_EN = {"jarvis", "assistant"}
-WAKE_WORDS_RU = {"джарвис", "жарвис", "ассистент"}
+WAKE_WORDS_RU = {"джарвис", "жарвис", "ассистент","тардис", "джервис"}
 
 SLEEP_WORDS_EN = {"sleep"}
 SLEEP_WORDS_RU = {"слип", "усни", "спи", "засни", "спать"}
@@ -115,67 +115,176 @@ def run_osascript(script: str) -> bool:
     except Exception as e:
         print("osascript exception:", e)
         return False
-    
+
+import subprocess
+
+def run_osascript_out(script: str) -> str:
+    """
+    Выполняет AppleScript и возвращает stdout (строкой).
+    Если ошибка — возвращает текст ошибки.
+    """
+    try:
+        p = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True
+        )
+        if p.returncode != 0:
+            return (p.stderr or "").strip()
+        return (p.stdout or "").strip()
+    except Exception as e:
+        return f"EXCEPTION: {e}"
+def chrome_execute_js(js: str) -> str:
+    # Выполняет JS в активной вкладке Chrome и возвращает результат (строкой).
+    js_escaped = js.replace("\\", "\\\\").replace('"', '\\"')
+    script = f'''
+    tell application "Google Chrome"
+        if (count of windows) = 0 then return "NO_WINDOW"
+        set t to active tab of front window
+        return execute t javascript "{js_escaped}"
+    end tell
+    '''
+    return run_osascript_out(script)
+
+
+def chrome_activate() -> bool:
+    return run_osascript('tell application "Google Chrome" to activate')
+
+
 def _as_escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
-def mac_music_search_play(query: str) -> bool:
-    """
-    Поиск по каталогу Apple Music через UI-автоматизацию.
-    Пытается надёжно:
-    - открыть Music
-    - сфокусировать поиск (Cmd+F, затем fallback Cmd+L)
-    - ввести запрос, Enter
-    - перейти фокусом в результаты (Tab несколько раз + Down)
-    - Enter чтобы запустить
-    """
-    q = query.strip()
-    if not q:
+##Youtube playing music logic
+def mac_open_url(url: str) -> bool:
+    try:
+        subprocess.run(["open", url], check=True)
+        return True
+    except Exception as e:
+        print("open url error:", e)
         return False
 
-    q = _as_escape(q)
 
-    script = f'''
-    -- 1) Запуск/активация Music
-    tell application "Music"
-        activate
-    end tell
-    delay 0.4
-
-    tell application "System Events"
-        -- 2) Попытка сфокусировать поиск: Cmd+F
-        keystroke "f" using {{command down}}
-        delay 0.2
-
-        -- очистить поле (Cmd+A, Backspace)
-        keystroke "a" using {{command down}}
-        delay 0.05
-        key code 51
-        delay 0.05
-
-        -- 3) Ввести запрос и выполнить поиск
-        keystroke "{q}"
-        delay 0.15
-        key code 36 -- Enter
-        delay 0.5
-
-        -- 4) Перевод фокуса из поля поиска в результаты:
-        -- Иногда нужно несколько Tab, чтобы попасть на список результатов/кнопку Play
-        repeat 4 times
-            key code 48 -- Tab
-            delay 0.12
-        end repeat
-
-        -- 5) Выбрать первый элемент (Down) и запустить (Enter)
-        key code 125 -- Down Arrow
-        delay 0.12
-        key code 36 -- Enter
-    end tell
-    '''
-
+def mac_key_code(code: int, times: int = 1, delay: float = 0.05) -> bool:
+    # presses a virtual key code N times
+    script = "tell application \"System Events\"\n"
+    for _ in range(max(1, times)):
+        script += f"  key code {code}\n  delay {delay}\n"
+    script += "end tell"
     return run_osascript(script)
 
 
+def mac_press_tab(times: int = 1) -> bool:
+    # tab key code = 48
+    return mac_key_code(48, times=times, delay=0.05)
+
+
+def mac_press_enter() -> bool:
+    # return key code = 36
+    return mac_key_code(36, times=1, delay=0.05)
+
+def play_from_youtube_music(query: str) -> bool:
+    q = (query or "").strip()
+    if not q:
+        return False
+
+    term = urllib.parse.quote(q)
+    url = f"https://music.youtube.com/search?q={term}"
+
+    if not mac_open_url(url):
+        return False
+
+    time.sleep(2.5)
+    chrome_activate()
+    time.sleep(0.3)
+
+    # JS: пытаемся нажать кнопку Play/Включить в Top Result или в первом треке.
+    js = r"""
+    (function () {
+      // 1) Пробуем найти явную кнопку play в "Top result" карточке
+      let btn =
+        document.querySelector('ytmusic-card-shelf-renderer ytmusic-play-button-renderer button') ||
+        document.querySelector('ytmusic-card-shelf-renderer tp-yt-paper-button') ||
+        document.querySelector('ytmusic-card-shelf-renderer button');
+
+      // 2) Если не нашли — пробуем первую кнопку play на странице (обычно у первого трека)
+      if (!btn) {
+        btn = document.querySelector('ytmusic-play-button-renderer button') ||
+              document.querySelector('button[aria-label*="Play"]') ||
+              document.querySelector('button[aria-label*="Воспроиз"]') ||
+              document.querySelector('button[aria-label*="Включ"]');
+      }
+
+      if (btn) {
+        btn.click();
+        return "CLICKED";
+      }
+
+      return "NO_BUTTON";
+    })();
+    """
+
+    res = chrome_execute_js(js)
+    print("YTM JS:", res)
+
+    if "CLICKED" in res:
+        # страховка: иногда клик включает, но звук стоит на паузе
+        time.sleep(0.4)
+        mac_media("playpause")
+        return True
+
+    # fallback: если JS не нашёл кнопку — просто попробуем media key
+    return mac_media("playpause")
+
+def ytm_toggle_play_pause() -> bool:
+
+    js = r"""
+(() => {
+  // 1) Самый надежный способ: напрямую через <video>
+  const v = document.querySelector('video');
+  if (v) {
+    if (v.paused) {
+      const p = v.play();
+      // play() может вернуть Promise
+      return "VIDEO_PLAY";
+    } else {
+      v.pause();
+      return "VIDEO_PAUSE";
+    }
+  }
+
+  // 2) Fallback: попытка найти кнопку play/pause (на случай если видео спрятано)
+  const btn =
+    document.querySelector('#play-pause-button') ||
+    document.querySelector('ytmusic-player-bar #play-pause-button') ||
+    document.querySelector('ytmusic-player-bar tp-yt-paper-icon-button.play-pause-button') ||
+    document.querySelector('tp-yt-paper-icon-button[aria-label*="Пауза"]') ||
+    document.querySelector('tp-yt-paper-icon-button[aria-label*="Pause"]') ||
+    document.querySelector('tp-yt-paper-icon-button[aria-label*="Play"]') ||
+    document.querySelector('tp-yt-paper-icon-button[aria-label*="Воспро"]');
+
+  if (!btn) return "NO_TARGET";
+  btn.click();
+  return "CLICKED_BTN";
+})();
+"""
+    res = chrome_execute_js(js)
+    print("YTM TOGGLE JS:", res)
+    return any(x in (res or "") for x in ("VIDEO_PLAY", "VIDEO_PAUSE", "CLICKED_BTN"))
+
+def chrome_is_ytm_active_tab() -> bool:
+    
+    script = r'''
+    tell application "Google Chrome"
+        if not (exists window 1) then return "NO"
+        set u to URL of active tab of window 1
+        if u contains "music.youtube.com" then return "YES"
+        return "NO"
+    end tell
+    '''
+    out = run_osascript_out(script)
+    return out.strip() == "YES"
+
+##Rest of the functions
 def mac_open_app(app_name: str) -> bool:
     # Activate (brings to front)
     script = f'tell application "{app_name}" to activate'
@@ -234,28 +343,29 @@ def mac_screenshot() -> bool:
         return False
 
 
+
 def mac_media(action: str) -> bool:
     if action == "playpause":
-        scripts = [
-            'tell application "Music" to playpause',
-        ]
+        # 1) если активна вкладка YouTube Music — жмём там
+        try:
+            if chrome_is_ytm_active_tab():
+                ok = ytm_toggle_play_pause()
+                if ok:
+                    return True
+        except Exception as e:
+            print("YTM playpause fallback:", e)
+
+        # 2) fallback на Apple Music (если вдруг ты слушаешь там)
+        return run_osascript('tell application "Music" to playpause')
+
     elif action == "next":
-        scripts = [
-            'tell application "Music" to activate',
-            'tell application "Music" to next track',
-        ]
+        # для YTM можно аналогично сделать js на next, но пока пусть будет Music fallback
+        return run_osascript('tell application "Music" to next track')
+
     elif action == "previous":
-        scripts = [
-            'tell application "Music" to activate',
-            'tell application "Music" to previous track',
-        ]
-    else:
-        return False
+        return run_osascript('tell application "Music" to previous track')
 
-    for sc in scripts:
-        run_osascript(sc)
-
-    return True
+    return False
 
 
 def mac_volume(delta: int = 0, mute: bool = False) -> bool:
@@ -435,7 +545,8 @@ def speak(conn: socket.socket, text: str):
         except OSError:
             return
         send_line(conn, "__speaking_off__")
-        
+
+
 def get_weather_wttr(location: str, lang: str) -> str:
     location = (location or "").strip()
     if not location:
@@ -491,13 +602,6 @@ def parse_and_execute_command(user_text: str) -> str | None:
     if t == "weather" or t.startswith("weather "):
         loc = user_text[len("weather") :].strip()
         return get_weather_wttr(loc, current_lang)
-    
-    if t.startswith("play ") and len(t) > len("play "):
-        q = user_text.strip()[len("play "):].strip()
-        if q:
-            ok = mac_music_search_play(q)
-            return "Searching Apple Music and playing." if ok else "I couldn't control Apple Music. Check Accessibility."
-        return "Say what to play."
 
     if t.startswith("open "):
         target = t[len("open ") :].strip()
@@ -554,6 +658,12 @@ def parse_and_execute_command(user_text: str) -> str | None:
     if t in ("play", "pause", "post", "play pause", "play/pause"):
         ok = mac_media("playpause")
         return "OK." if ok else "I could not control media."
+    
+    if t.startswith("turn") and len(t) > len("turn"):
+        q = user_text.strip()[len("ютуб "):].strip()
+        ok = play_from_youtube_music(q)
+        return "Ок, включаю на YouTube." if ok else "Не получилось. Проверь Accessibility."
+
 
     if t in ("next track", "next"):
         ok = mac_media("next")
@@ -588,13 +698,17 @@ def parse_and_execute_command(user_text: str) -> str | None:
     if t == "погода" or t.startswith("погода "):
         loc = user_text[len("погода") :].strip()
         return get_weather_wttr(loc, current_lang)
-    
-    if t.startswith("включи ") and len(t) > len("включи "):
-        q = user_text.strip()[len("включи "):].strip()
-        if q:
-            ok = mac_music_search_play(q)
-            return "Ищу в Apple Music и включаю." if ok else "Не получилось управлять Apple Music. Проверь Accessibility."
-        return "Скажи, что включить."
+
+    if t.startswith("включи", ) and len(t) > len("включи "):
+        q = user_text.strip()[len("ютуб "):].strip()
+        ok = play_from_youtube_music(q)
+        return "Ок, включаю на YouTube." if ok else "Не получилось. Проверь Accessibility."
+     
+    if t.startswith("поставь", ) and len(t) > len("поставь"):
+        q = user_text.strip()[len("ютуб "):].strip()
+        ok = play_from_youtube_music(q)
+        return "Ок, включаю на YouTube." if ok else "Не получилось. Проверь Accessibility."
+
 
 
     if t.startswith("открой "):
