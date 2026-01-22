@@ -7,6 +7,10 @@ from openai import OpenAI
 import subprocess
 import urllib.parse
 import time
+import queue
+import urllib.request
+
+
 
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 
@@ -26,6 +30,9 @@ model_en = Model(MODEL_EN)
 
 current_lang = "ru"
 rec = KaldiRecognizer(model_ru, SAMPLE_RATE)
+
+SPEAK_QUEUE = queue.Queue(maxsize=10)
+
 
 # ===== SIMPLE MEMORY =====
 conversation_history = []
@@ -242,8 +249,8 @@ def mac_media(action: str) -> bool:
     global ACTIVE_PLAYER
 
     if action == "playpause":
-        if ACTIVE_PLAYER in ("ytm", "youtube"):
-            return ytm_toggle_play_pause()
+        if ACTIVE_PLAYER == "youtube":
+            return youtube_toggle_play_pause()
         return run_osascript('tell application "Music" to playpause')
 
     if action == "next":
@@ -255,6 +262,7 @@ def mac_media(action: str) -> bool:
             return run_osascript('tell application "Music" to previous track')
 
     return False
+
 
 
 
@@ -419,6 +427,7 @@ def generate_reply(text: str) -> str:
         "If unsure about facts, clearly say you don't know. "
         "Do not invent people, games or places if you are not sure. "
         "Short, clear sentences. Year is 2026. No markdown, no lists."
+        "Answer in one short sentence. Max 10 words"
     )
 
     try:
@@ -426,7 +435,7 @@ def generate_reply(text: str) -> str:
             model="gpt-4o-mini",
             messages=[{"role": "system", "content": system_prompt}, *recent],
             temperature=0.1,
-            max_tokens=70,
+            max_tokens=30,
         )
         reply = completion.choices[0].message.content.strip()
         return reply.replace("\n", " ")
@@ -454,23 +463,32 @@ def tts_bytes(text: str) -> bytes:
         return b""
 
 
-def speak(conn: socket.socket, text: str):
-    # show text to OLED
-    try:
-        conn.sendall((text + "\n").encode("utf-8"))
-    except OSError:
+def speak(conn, text):
+    text = (text or "").strip()
+    if not text:
         return
+    # drop backlog: keep only latest
+    try:
+        while True:
+            SPEAK_QUEUE.get_nowait()
+            SPEAK_QUEUE.task_done()
+    except queue.Empty:
+        pass
 
-    audio = tts_bytes(text)
-    if audio:
-        send_line(conn, "__speaking_on__")
-        header = f"__audio_len__ {len(audio)}\n"
-        try:
-            conn.sendall(header.encode("utf-8"))
-            conn.sendall(audio)
-        except OSError:
-            return
-        send_line(conn, "__speaking_off__")
+    try:
+        SPEAK_QUEUE.put_nowait((conn, text))
+    except queue.Full:
+        pass
+
+def wait_js(predicate_js: str, timeout: float = 2.0, step: float = 0.1) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        res = chrome_execute_js(predicate_js)
+        if (res or "").strip() in ("1", "true", "TRUE", "OK"):
+            return True
+        time.sleep(step)
+    return False
+
 
 
 def get_weather_wttr(location: str, lang: str) -> str:
@@ -544,6 +562,7 @@ LANG_RU_WORDS = {
     "переключись на русский",
     "переключи на русский",
     "русский режим",
+    
 }
 
 # Optional: very common RU phrase for EN
@@ -553,6 +572,7 @@ LANG_EN_WORDS_RU = {
     "по-английски",
     "переключись на английский",
     "переключи на английский",
+    "смена" ,
     "английский режим",
 }
 
@@ -583,147 +603,53 @@ def set_language(conn: socket.socket | None, lang: str) -> bool:
 
     return True
 
+def speak_worker():
+    while True:
+        conn, text = SPEAK_QUEUE.get()
+        try:
+            if conn is None:
+                continue
+
+            # show text on OLED
+            try:
+                conn.sendall((text + "\n").encode("utf-8"))
+            except OSError:
+                pass
+
+            audio = tts_bytes(text)
+            if audio:
+                send_line(conn, "__speaking_on__")
+                header = f"__audio_len__ {len(audio)}\n"
+                try:
+                    conn.sendall(header.encode("utf-8"))
+                    conn.sendall(audio)
+                except OSError:
+                    pass
+                send_line(conn, "__speaking_off__")
+        finally:
+            SPEAK_QUEUE.task_done()
+
+
 
 # ====================================================================================================
 # MUSIC PLAY
 # ====================================================================================================
-ACTIVE_PLAYER = "music"  # "music" (Apple Music) or "ytm" (YouTube Music)
-
+ACTIVE_PLAYER = "youtube"  # "music" (Apple Music) or (YouTube)
 
 # YouTube
-def ytm_force_play() -> bool:
+
+def youtube_toggle_play_pause() -> bool:
     js = r"""
 (() => {
   const v = document.querySelector('video');
-  if (v) {
-    if (v.paused) {
-      v.play();
-      return "FORCE_PLAY";
-    }
-    return "ALREADY_PLAYING";
-  }
-
-  // fallback: try click play button if video not found
-  const btn =
-    document.querySelector('#play-pause-button') ||
-    document.querySelector('ytmusic-player-bar #play-pause-button') ||
-    document.querySelector('tp-yt-paper-icon-button[aria-label*="Play"]') ||
-    document.querySelector('tp-yt-paper-icon-button[aria-label*="Воспро"]') ||
-    document.querySelector('button[aria-label*="Play"]') ||
-    document.querySelector('button[aria-label*="Воспро"]');
-
-  if (!btn) return "NO_TARGET";
-  btn.click();
-  return "CLICKED";
+  if (!v) return "NO_VIDEO";
+  if (v.paused) { v.play(); return "PLAY"; }
+  v.pause(); return "PAUSE";
 })();
 """
     res = chrome_execute_js(js)
-    print("YTM FORCE PLAY:", res)
-    return any(x in (res or "") for x in ("FORCE_PLAY", "ALREADY_PLAYING", "CLICKED"))
-
-
-# YouTube music logic
-def play_from_youtube_music(query: str) -> bool:
-    global ACTIVE_PLAYER
-
-    q = (query or "").strip()
-    if not q:
-        return False
-
-    term = urllib.parse.quote(q)
-    url = f"https://music.youtube.com/search?q={term}"
-
-    if not mac_open_url(url):
-        return False
-
-    time.sleep(2.5)
-    chrome_activate()
-    time.sleep(0.3)
-
-    js = r"""
-    (function () {
-      let btn =
-        document.querySelector('ytmusic-card-shelf-renderer ytmusic-play-button-renderer button') ||
-        document.querySelector('ytmusic-card-shelf-renderer tp-yt-paper-button') ||
-        document.querySelector('ytmusic-card-shelf-renderer button');
-
-      if (!btn) {
-        btn = document.querySelector('ytmusic-play-button-renderer button') ||
-              document.querySelector('button[aria-label*="Play"]') ||
-              document.querySelector('button[aria-label*="Воспроиз"]') ||
-              document.querySelector('button[aria-label*="Включ"]');
-      }
-
-      if (btn) { btn.click(); return "CLICKED"; }
-      return "NO_BUTTON";
-    })();
-    """
-
-    res = chrome_execute_js(js)
-    print("YTM JS:", res)
-
-    # ВАЖНО: фиксируем источник ДО возврата
-    ACTIVE_PLAYER = "ytm"
-
-    time.sleep(0.6)
-
-    if "CLICKED" in (res or ""):
-        return ytm_force_play()
-
-    # fallback
-    return ytm_force_play()
-
-
-def ytm_toggle_play_pause() -> bool:
-
-    js = r"""
-(() => {
-  // 1) Самый надежный способ: напрямую через <video>
-  const v = document.querySelector('video');
-  if (v) {
-    if (v.paused) {
-      const p = v.play();
-      // play() может вернуть Promise
-      return "VIDEO_PLAY";
-    } else {
-      v.pause();
-      return "VIDEO_PAUSE";
-    }
-  }
-
-  // 2) Fallback: попытка найти кнопку play/pause (на случай если видео спрятано)
-  const btn =
-    document.querySelector('#play-pause-button') ||
-    document.querySelector('ytmusic-player-bar #play-pause-button') ||
-    document.querySelector('ytmusic-player-bar tp-yt-paper-icon-button.play-pause-button') ||
-    document.querySelector('tp-yt-paper-icon-button[aria-label*="Пауза"]') ||
-    document.querySelector('tp-yt-paper-icon-button[aria-label*="Pause"]') ||
-    document.querySelector('tp-yt-paper-icon-button[aria-label*="Play"]') ||
-    document.querySelector('tp-yt-paper-icon-button[aria-label*="Воспро"]');
-
-  if (!btn) return "NO_TARGET";
-  btn.click();
-  return "CLICKED_BTN";
-})();
-"""
-    res = chrome_execute_js(js)
-    print("YTM TOGGLE JS:", res)
-    return any(x in (res or "") for x in ("VIDEO_PLAY", "VIDEO_PAUSE", "CLICKED_BTN"))
-
-
-def chrome_is_ytm_active_tab() -> bool:
-
-    script = r"""
-    tell application "Google Chrome"
-        if not (exists window 1) then return "NO"
-        set u to URL of active tab of window 1
-        if u contains "music.youtube.com" then return "YES"
-        return "NO"
-    end tell
-    """
-    out = run_osascript_out(script)
-    return out.strip() == "YES"
-
+    print("YT TOGGLE:", res)
+    return any(x in (res or "") for x in ("PLAY", "PAUSE"))
 
 ##Apple Music playing logic (For MACOS)
 
@@ -831,7 +757,7 @@ def play_from_youtube_video(query: str) -> bool:
         print("Redirected to YTM, trying fallback video...")
         # Идём назад и кликаем следующий ytd-video-renderer (2-й)
         chrome_execute_js("history.back(); 'BACK';")
-        time.sleep(1.5)
+        time.sleep(1.0)
 
         js_click_second = r"""
 (() => {
@@ -945,8 +871,8 @@ def parse_and_execute_command(user_text: str) -> str | None:
         return "Say the query."
 
     if t.startswith("turn on ") and len(t) > len("turn on "):
-        q = t[len("turn on ") :].strip()  # <-- из t, потому что он уже "починен"
-        ok = play_from_youtube_music(q)
+        q = t[len("turn on ") :].strip()  
+        ok = play_from_youtube_video(q)
         return "Ok" if ok else "Failed."
 
     if t.startswith("type "):
@@ -981,13 +907,6 @@ def parse_and_execute_command(user_text: str) -> str | None:
     if t in ("play", "pause", "post", "stop", "play/pause"):
         ok = mac_media("playpause")
         return "OK." if ok else "I could not control media."
-
-    if t.startswith("turn") and len(t) > len("turn"):
-        q = user_text.strip()[len("ютуб ") :].strip()
-        ok = play_from_youtube_music(q)
-        return (
-            "Ок, включаю на YouTube." if ok else "Не получилось. Проверь Accessibility."
-        )
 
     if t in ("close tab", "close the tab", "close this tab"):
         ok = chrome_close_tab()
@@ -1047,29 +966,22 @@ def parse_and_execute_command(user_text: str) -> str | None:
             ok = mac_quit_app(app_key)
             return "Quit." if ok else "I could not quit it."
         return "That app is not in my allowed list."
-# ---------- EN: YouTube VIDEO ----------
-    if t.startswith("play on youtube ") and len(t) > len("play on youtube "):
-        q = user_text[len("play on youtube "):].strip()
-        ok = play_from_youtube_video(q)
-        return "Playing on YouTube." if ok else "Failed to open YouTube."
 
-    if t.startswith("open on youtube ") and len(t) > len("open on youtube "):
-        q = user_text[len("open on youtube "):].strip()
+    if t.startswith("launch ") and len(t) > len("launch "):
+        q = user_text[len("launch "):].strip()
         ok = play_from_youtube_video(q)
-        return "Opening on YouTube." if ok else "Failed to open YouTube."
+        return "Okay" if ok else "Failed to open YouTube."
 
-    # ---------- EN: YouTube Music ----------
-    # (оставь ОДНУ ветку; не "turn on", лучше "play", потому что Vosk часто коверкать turn on)
+
     if t.startswith("play ") and len(t) > len("play "):
         q = user_text[len("play "):].strip()
-        ok = play_from_youtube_music(q)
-        return "Okay, playing on YouTube Music." if ok else "Failed. Check Accessibility."
+        ok = play_from_youtube_video(q)
+        return "Okay" if ok else "Failed. Check Accessibility."
 
-    # Если хочешь именно "turn on ..." — добавь как алиас:
     if t.startswith("turn on ") and len(t) > len("turn on "):
         q = user_text[len("turn on "):].strip()
-        ok = play_from_youtube_music(q)
-        return "Okay, playing on YouTube Music." if ok else "Failed. Check Accessibility."
+        ok = play_from_youtube_video(q)
+        return "Okay" if ok else "Failed. Check Accessibility."
 
     # ---- RU commands -----------------------------------------
 
@@ -1077,52 +989,16 @@ def parse_and_execute_command(user_text: str) -> str | None:
         loc = user_text[len("погода") :].strip()
         return get_weather_wttr(loc, current_lang)
 
-   
-    # ---------- RU: YouTube VIDEO ----------
-    # делаем более гибко: "на ютубе", "на ютуб", "в ютубе", "на youtube"
-    if (t.startswith("включи на ютуб") or t.startswith("включи в ютуб") or
-        t.startswith("открой на ютуб") or t.startswith("открой в ютуб") or
-        t.startswith("включи на youtube") or t.startswith("открой на youtube")):
-
-        parts = t.split()
-        idx = -1
-        for i, w in enumerate(parts):
-            if w in ("ютуб", "ютубе", "youtube"):
-                idx = i
-        q = " ".join(parts[idx+1:]).strip() if idx != -1 else ""
-
-        # если вдруг Vosk дал исходный текст лучше — берём из user_text по похожему принципу:
-        if not q:
-            ut = normalize_text(user_text)
-            for key in ("на ютубе", "на ютуб", "в ютубе", "в ютуб", "на youtube"):
-                if key in ut:
-                    q = ut.split(key, 1)[1].strip()
-                    break
-
-        ok = play_from_youtube_video(q)
-        return "Включаю на YouTube." if ok else "Не получилось открыть YouTube."
-
-    # ---------- RU: YouTube Music ----------
     if t.startswith("включи ") and len(t) > len("включи "):
         q = user_text[len("включи "):].strip()
-        ok = play_from_youtube_music(q)
-        return "Ок, включаю в YouTube Music." if ok else "Не получилось. Проверь Accessibility."
+        ok = play_from_youtube_video(q)
+        return "Хорошо." if ok else "Не получилось. Проверь Accessibility."
 
     if t.startswith("поставь ") and len(t) > len("поставь "):
         q = user_text[len("поставь "):].strip()
-        ok = play_from_youtube_music(q)
-        return "Ок, ставлю в YouTube Music." if ok else "Не получилось. Проверь Accessibility."
+        ok = play_from_youtube_video(q)
+        return "Хорошо. " if ok else "Не получилось. Проверь Accessibility."
 
-    if t.startswith(
-        "поставь",
-    ) and len(
-        t
-    ) > len("поставь"):
-        q = user_text.strip()[len("ютуб ") :].strip()
-        ok = play_from_youtube_music(q)
-        return (
-            "Ок, включаю на YouTube." if ok else "Не получилось. Проверь Accessibility."
-        )
 
     if t.startswith("открой плейлист ") and len(t) > len("открой плейлист "):
         pl = user_text.strip()[len("открой плейлист ") :].strip()
@@ -1140,7 +1016,7 @@ def parse_and_execute_command(user_text: str) -> str | None:
         if app_key:
             ok = mac_open_app(app_key)
             return "Открыл." if ok else "Не получилось открыть."
-        return "Этого приложения нет в списке разрешённых."
+        return "приложение не найдено"
 
     if t.startswith("переключись на "):
         target = t[len("переключись на ") :].strip()
@@ -1187,7 +1063,7 @@ def parse_and_execute_command(user_text: str) -> str | None:
 
     if t in ("плей", "играй", "пауза", "плей пауза", "включи"):
         ok = mac_media("playpause")
-        return "Ок." if ok else "Не получилось."
+        return "Ок" if ok else "Не получилось."
 
     if t in ("следующий трек", "следующая", "дальше"):
         ok = mac_media("next")
@@ -1222,7 +1098,7 @@ def parse_and_execute_command(user_text: str) -> str | None:
             return (
                 "Закрыл окно."
                 if ok
-                else "Не получилось закрыть окно. Проверь Accessibility."
+                else "Повтори"
             )
 
         if t in (
@@ -1240,7 +1116,7 @@ def parse_and_execute_command(user_text: str) -> str | None:
         if app_key:
             ok = mac_quit_app(app_key)
             return "Закрыл." if ok else "Не получилось закрыть."
-        return "Этого приложения нет в списке разрешённых."
+        return "Не получилось"
 
     if t.startswith("выйди из "):
         target = t[len("выйди из ") :].strip()
@@ -1249,7 +1125,7 @@ def parse_and_execute_command(user_text: str) -> str | None:
         if app_key:
             ok = mac_quit_app(app_key)
             return "Вышел." if ok else "Не получилось."
-        return "Этого приложения нет в списке разрешённых."
+        return "Не найдено"
     
 
     return None
@@ -1265,7 +1141,7 @@ def handle_client(conn: socket.socket, addr):
 
     try:
         while True:
-            data = conn.recv(2048)
+            data = conn.recv(1024)
             if not data:
                 break
 
@@ -1291,9 +1167,9 @@ def handle_client(conn: socket.socket, addr):
                     if detect_wake(norm):
                         set_awake(conn, True)
                         ack = (
-                            "Да, слушаю."
+                            "Да?"
                             if current_lang == "ru"
-                            else "Yes. I'm listening."
+                            else "Yes?"
                         )
                         speak(conn, ack)
                     continue
@@ -1312,7 +1188,7 @@ def handle_client(conn: socket.socket, addr):
                 if detect_sleep(norm):
                     set_awake(conn, False)
                     ack = (
-                        "Ок. Сплю." if current_lang == "ru" else "Okay. Going to sleep."
+                        "Сплю." if current_lang == "ru" else "Going to sleep."
                     )
                     speak(conn, ack)
                     continue
@@ -1373,9 +1249,9 @@ def handle_client(conn: socket.socket, addr):
                     if detect_wake(pnorm):
                         set_awake(conn, True)
                         ack = (
-                            "Да, слушаю."
+                            "Да?"
                             if current_lang == "ru"
-                            else "Yes. I'm listening."
+                            else "Yes?"
                         )
                         speak(conn, ack)
                     continue
@@ -1402,6 +1278,7 @@ def main():
         s.bind((HOST, PORT))
         s.listen(1)
         print(f"Server listening on {HOST}:{PORT}")
+        threading.Thread(target=speak_worker, daemon=True).start()
 
         while True:
             conn, addr = s.accept()
