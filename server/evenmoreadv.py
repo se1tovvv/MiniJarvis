@@ -10,8 +10,6 @@ import time
 import queue
 import urllib.request
 
-
-
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 
 # ===== MODELS =====
@@ -264,8 +262,6 @@ def mac_media(action: str) -> bool:
     return False
 
 
-
-
 def mac_volume(delta: int = 0, mute: bool = False) -> bool:
     # delta: +6/-6 etc; mute toggles by setting output muted true
     if mute:
@@ -480,6 +476,7 @@ def speak(conn, text):
     except queue.Full:
         pass
 
+
 def wait_js(predicate_js: str, timeout: float = 2.0, step: float = 0.1) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -488,7 +485,6 @@ def wait_js(predicate_js: str, timeout: float = 2.0, step: float = 0.1) -> bool:
             return True
         time.sleep(step)
     return False
-
 
 
 def get_weather_wttr(location: str, lang: str) -> str:
@@ -562,7 +558,6 @@ LANG_RU_WORDS = {
     "переключись на русский",
     "переключи на русский",
     "русский режим",
-    
 }
 
 # Optional: very common RU phrase for EN
@@ -572,7 +567,7 @@ LANG_EN_WORDS_RU = {
     "по-английски",
     "переключись на английский",
     "переключи на английский",
-    "смена" ,
+    "смена",
     "английский режим",
 }
 
@@ -603,6 +598,7 @@ def set_language(conn: socket.socket | None, lang: str) -> bool:
 
     return True
 
+
 def speak_worker():
     while True:
         conn, text = SPEAK_QUEUE.get()
@@ -630,13 +626,13 @@ def speak_worker():
             SPEAK_QUEUE.task_done()
 
 
-
 # ====================================================================================================
 # MUSIC PLAY
 # ====================================================================================================
 ACTIVE_PLAYER = "youtube"  # "music" (Apple Music) or (YouTube)
 
 # YouTube
+
 
 def youtube_toggle_play_pause() -> bool:
     js = r"""
@@ -650,6 +646,7 @@ def youtube_toggle_play_pause() -> bool:
     res = chrome_execute_js(js)
     print("YT TOGGLE:", res)
     return any(x in (res or "") for x in ("PLAY", "PAUSE"))
+
 
 ##Apple Music playing logic (For MACOS)
 
@@ -714,6 +711,7 @@ def mac_music_list_playlists(filter_text: str = "") -> str:
     end tell
     """
     return run_osascript_out(script)
+
 
 # ====================================================================================================
 # Youtube Video playing logic
@@ -784,7 +782,7 @@ def play_from_youtube_video(query: str) -> bool:
 
 def chrome_open_url(url: str, new_tab: bool = True) -> bool:
     safe = _as_escape(url)
-    script = f'''
+    script = f"""
     tell application "Google Chrome"
         activate
         if (count of windows) = 0 then
@@ -798,17 +796,19 @@ def chrome_open_url(url: str, new_tab: bool = True) -> bool:
             set URL of active tab of front window to "{safe}"
         end if
     end tell
-    '''
+    """
     return run_osascript(script)
 
+
 def chrome_active_url() -> str:
-    script = r'''
+    script = r"""
     tell application "Google Chrome"
         if (count of windows) = 0 then return ""
         return URL of active tab of front window
     end tell
-    '''
+    """
     return (run_osascript_out(script) or "").strip()
+
 
 def yt_force_play() -> bool:
     js = r"""
@@ -822,6 +822,7 @@ def yt_force_play() -> bool:
     res = chrome_execute_js(js)
     print("YT FORCE PLAY:", res)
     return "PLAY" in (res or "") or "ALREADY_PLAYING" in (res or "")
+
 
 # ====================================================================================================
 # Executing Commands
@@ -871,7 +872,7 @@ def parse_and_execute_command(user_text: str) -> str | None:
         return "Say the query."
 
     if t.startswith("turn on ") and len(t) > len("turn on "):
-        q = t[len("turn on ") :].strip()  
+        q = t[len("turn on ") :].strip()
         ok = play_from_youtube_video(q)
         return "Ok" if ok else "Failed."
 
@@ -968,18 +969,17 @@ def parse_and_execute_command(user_text: str) -> str | None:
         return "That app is not in my allowed list."
 
     if t.startswith("launch ") and len(t) > len("launch "):
-        q = user_text[len("launch "):].strip()
+        q = user_text[len("launch ") :].strip()
         ok = play_from_youtube_video(q)
         return "Okay" if ok else "Failed to open YouTube."
 
-
     if t.startswith("play ") and len(t) > len("play "):
-        q = user_text[len("play "):].strip()
+        q = user_text[len("play ") :].strip()
         ok = play_from_youtube_video(q)
         return "Okay" if ok else "Failed. Check Accessibility."
 
     if t.startswith("turn on ") and len(t) > len("turn on "):
-        q = user_text[len("turn on "):].strip()
+        q = user_text[len("turn on ") :].strip()
         ok = play_from_youtube_video(q)
         return "Okay" if ok else "Failed. Check Accessibility."
 
@@ -990,15 +990,14 @@ def parse_and_execute_command(user_text: str) -> str | None:
         return get_weather_wttr(loc, current_lang)
 
     if t.startswith("включи ") and len(t) > len("включи "):
-        q = user_text[len("включи "):].strip()
+        q = user_text[len("включи ") :].strip()
         ok = play_from_youtube_video(q)
         return "Хорошо." if ok else "Не получилось. Проверь Accessibility."
 
     if t.startswith("поставь ") and len(t) > len("поставь "):
-        q = user_text[len("поставь "):].strip()
+        q = user_text[len("поставь ") :].strip()
         ok = play_from_youtube_video(q)
         return "Хорошо. " if ok else "Не получилось. Проверь Accessibility."
-
 
     if t.startswith("открой плейлист ") and len(t) > len("открой плейлист "):
         pl = user_text.strip()[len("открой плейлист ") :].strip()
@@ -1095,11 +1094,7 @@ def parse_and_execute_command(user_text: str) -> str | None:
 
         if t in ("закрой окно", "закрой окно хром", "закрой окно в хроме"):
             ok = chrome_close_window()
-            return (
-                "Закрыл окно."
-                if ok
-                else "Повтори"
-            )
+            return "Закрыл окно." if ok else "Повтори"
 
         if t in (
             "закрой хром",
@@ -1126,7 +1121,6 @@ def parse_and_execute_command(user_text: str) -> str | None:
             ok = mac_quit_app(app_key)
             return "Вышел." if ok else "Не получилось."
         return "Не найдено"
-    
 
     return None
 
@@ -1166,11 +1160,7 @@ def handle_client(conn: socket.socket, addr):
                 if not is_awake:
                     if detect_wake(norm):
                         set_awake(conn, True)
-                        ack = (
-                            "Да?"
-                            if current_lang == "ru"
-                            else "Yes?"
-                        )
+                        ack = "Да?" if current_lang == "ru" else "Yes?"
                         speak(conn, ack)
                     continue
 
@@ -1187,9 +1177,7 @@ def handle_client(conn: socket.socket, addr):
                 # Awake: sleep command
                 if detect_sleep(norm):
                     set_awake(conn, False)
-                    ack = (
-                        "Сплю." if current_lang == "ru" else "Going to sleep."
-                    )
+                    ack = "Сплю." if current_lang == "ru" else "Going to sleep."
                     speak(conn, ack)
                     continue
 
@@ -1248,11 +1236,7 @@ def handle_client(conn: socket.socket, addr):
                 if not is_awake:
                     if detect_wake(pnorm):
                         set_awake(conn, True)
-                        ack = (
-                            "Да?"
-                            if current_lang == "ru"
-                            else "Yes?"
-                        )
+                        ack = "Да?" if current_lang == "ru" else "Yes?"
                         speak(conn, ack)
                     continue
 
