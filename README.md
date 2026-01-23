@@ -49,7 +49,7 @@ Features
 7. User scrolls multi-line responses with scroll SMD button
 
 ## Important note
-There is a single esp32 firmware file, which you upload once. To reach full working structure smoothly, I added 3 more files on the Python server side, which I recomend changing step by step. 
+There is a single esp32 firmware file, which you upload once. To reach full working structure smoothly, I added 3 more files on the Python server side, which I recomend changing step by step. There are two Vosk speech-to-text models. Change them as you wish. Read the python files and adjust voice commands as needed.
 
 1. When running default.py, say "Jarvis" or "Assistant" to wake him up. Ideally, when you speak, the LED must turn on untill you stop. Ask several questions, and if there are no mistakes, proceed to advanced.py
 
