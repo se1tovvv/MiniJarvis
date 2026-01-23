@@ -50,7 +50,7 @@ Features
 
 ### 1. Clone repo
 ```bash
-git clone https://github.com/se1tovvм/minigpt.git
+git clone https://github.com/se1tovv/minigpt.git
 2. Download Vosk models
 
 Place in /models.
@@ -67,6 +67,16 @@ OPENAI_API_KEY="your key"
 5. Flash ESP32 firmware (Arduino IDE)
 6. Run server
 python server/minigpt_server.py
+
+## Important note
+To reach full working structure smoothly, I added 3 more files on the Python server side, which I recomend doing step by step. 
+I highly recomend running default.py first, which lacks PC control system, but includes "jarvis" wake word function, as for beginning. 
+Then, run advanced.py, which has full PC control function
+After that, final.py allows user to run music from YouTube and Apple Music.
+
+When running the server, it is better to use small vosk models for fast server start. However, such models are innacurate, so after successful lauch of all funcitons, switch to larger VOSK models for better speech-to-text recognition. 
+
+Don't forget to allow VSC control the PC!
 
 
 
