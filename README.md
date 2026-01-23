@@ -34,6 +34,8 @@ Features
 - TP4056 Battery charge module
 - Li-po 3.7V 250 mAh battery
 
+
+
 ##  Usage Flow
 1. ESP32 connects to Wi-Fi and server
 2. OLED asks user to select language (`RU` or `EN`)
@@ -45,6 +47,17 @@ Features
    - streams 24kHz PCM to MAX98357A
    - LED indicates speech vs. silence
 7. User scrolls multi-line responses with scroll SMD button
+
+## Important note
+There is a single esp32 firmware file, which you upload once. To reach full working structure smoothly, I added 3 more files on the Python server side, which I recomend changing step by step. 
+
+1. When running default.py, say "Jarvis" or "Assistant" to wake him up. Ideally, when you speak, the LED must turn on untill you stop. Ask several questions, and if there are no mistakes, proceed to advanced.py
+
+2. Run advanced.py, which has full PC control function. Try saying "Jarvis", open Google Chrome and etc. 
+3. After that, final.py allows user to run music from YouTube and Apple Music. Say "Jarvis", turn on Travis Scott as example, which will open youtube. There is additional command for macOS users, as I added a feature to open Apple Music. 
+
+When running the server, it is better to use small vosk models for fast server start. However, such models are innacurate, so after successful lauch of all funcitons, switch to larger VOSK models for better speech-to-text recognition. Don't forget to allow VSC to control the PC!
+
 
 ## 🏁 Installation (Quick Guide)
 
@@ -66,17 +79,9 @@ OPENAI_API_KEY="your key"
 
 5. Flash ESP32 firmware (Arduino IDE)
 6. Run server
-python server/minigpt_server.py
-
-## Important note
-To reach full working structure smoothly, I added 3 more files on the Python server side, which I recomend doing step by step. 
-I highly recomend running default.py first, which lacks PC control system, but includes "jarvis" wake word function, as for beginning. 
-Then, run advanced.py, which has full PC control function
-After that, final.py allows user to run music from YouTube and Apple Music.
-
-When running the server, it is better to use small vosk models for fast server start. However, such models are innacurate, so after successful lauch of all funcitons, switch to larger VOSK models for better speech-to-text recognition. 
-
-Don't forget to allow VSC control the PC!
+python server/miniJarvis_default.py
+python server/miniJarvis_advanced.py
+python server/miniJarvis_final.py
 
 
 
