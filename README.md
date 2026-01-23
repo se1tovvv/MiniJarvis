@@ -54,7 +54,7 @@ There is a single esp32 firmware file, which you upload once. To reach full work
 1. When running default.py, say "Jarvis" or "Assistant" to wake him up. Ideally, when you speak, the LED must turn on untill you stop. Ask several questions, and if there are no mistakes, proceed to advanced.py
 
 2. Run advanced.py, which has full PC control function. Try saying "Jarvis", open Google Chrome and etc. 
-3. After that, final.py allows user to run music from YouTube and Apple Music. Say "Jarvis", turn on Travis Scott as example, which will open youtube. There is additional command for macOS users, as I added a feature to open Apple Music. 
+3. After that, final.py allows user to run music from YouTube and Apple Music. Say "Jarvis", turn on Travis Scott as example, which will open youtube. There is additional command for macOS users, as I added a feature to open Apple Music. To see the full list of commands, see def parse_and_execute_command.
 
 When running the server, it is better to use small vosk models for fast server start. However, such models are innacurate, so after successful lauch of all funcitons, switch to larger VOSK models for better speech-to-text recognition. Don't forget to allow VSC to control the PC!
 
