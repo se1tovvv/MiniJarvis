@@ -325,7 +325,7 @@ void selectLanguageOnce() {
   if (g_oledOK) {
     u8g2.clearBuffer();
     u8g2.setFont(u8g2_font_5x7_t_cyrillic);
-    u8g2.drawUTF8(0, 14, "Выбери язык:");
+    u8g2.drawUTF8(0, 14, "Choose the language");
     u8g2.drawUTF8(0, 32, "LEFT (GPIO16) = RU");
     u8g2.drawUTF8(0, 44, "RIGHT (BTN4)  = EN");
     u8g2.sendBuffer();
@@ -573,11 +573,11 @@ void ensure_connection() {
   if (client.connect(SERVER_IP, SERVER_PORT)) {
     Serial.println("Server connected");
     client.println("HELLO ESP32 PCM16 16000");
-    showOledMessage("Сервер:", "подключен");
+    showOledMessage("Server:", "Connected");
     delay(800);
   } else {
     Serial.println("Server connect failed");
-    showOledMessage("Сервер:", "ошибка соединения");
+    showOledMessage("Server", "Connection error");
     delay(1000);
   }
 }
