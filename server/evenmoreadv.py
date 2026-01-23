@@ -13,8 +13,8 @@ import urllib.request
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 
 # ===== MODELS =====
-MODEL_RU = "/Users/seitovmaulet/Downloads/vosk-model-small-ru-0.22"
-MODEL_EN = "/Users/seitovmaulet/Downloads/vosk-model-small-en-us-0.15"
+MODEL_RU = ""
+MODEL_EN = ""
 SAMPLE_RATE = 16000
 
 # ===== TCP CONFIG =====
@@ -227,7 +227,6 @@ def mac_screenshot() -> bool:
 
 
 def chrome_execute_js(js: str) -> str:
-    # Выполняет JS в активной вкладке Chrome и возвращает результат (строкой).
     js_escaped = js.replace("\\", "\\\\").replace('"', '\\"')
     script = f"""
     tell application "Google Chrome"
@@ -648,8 +647,7 @@ def youtube_toggle_play_pause() -> bool:
     return any(x in (res or "") for x in ("PLAY", "PAUSE"))
 
 
-##Apple Music playing logic (For MACOS)
-
+##Apple Music playing logic (For MACOS). 
 
 def mac_music_play_playlist(playlist_name: str, shuffle: bool = True) -> bool:
     global ACTIVE_PLAYER
@@ -724,13 +722,13 @@ def play_from_youtube_video(query: str) -> bool:
     term = urllib.parse.quote(q)
     url = f"https://www.youtube.com/results?search_query={term}"
 
-    # ВАЖНО: открываем внутри Chrome
+    # Open inside Chrome
     if not chrome_open_url(url, new_tab=True):
         return False
 
     time.sleep(2.0)
 
-    # Кликаем строго по первому видео-рендереру
+    # Click by first render
     js_click_first = r"""
 (() => {
   const first =
@@ -749,11 +747,10 @@ def play_from_youtube_video(query: str) -> bool:
 
     time.sleep(2.0)
 
-    # Проверка: вдруг улетели на music.youtube.com (редко, но бывает)
+    # Check if no errors with re-directing to youtube.music
     u = chrome_active_url()
     if "music.youtube.com" in u:
         print("Redirected to YTM, trying fallback video...")
-        # Идём назад и кликаем следующий ytd-video-renderer (2-й)
         chrome_execute_js("history.back(); 'BACK';")
         time.sleep(1.0)
 
@@ -877,7 +874,7 @@ def parse_and_execute_command(user_text: str) -> str | None:
         return "Ok" if ok else "Failed."
 
     if t.startswith("type "):
-        content = user_text.strip()[len("type ") :].strip()  # keep original case
+        content = user_text.strip()[len("type ") :].strip()  
         if content:
             ok = mac_type_text(content)
             return (
