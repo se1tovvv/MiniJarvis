@@ -138,5 +138,7 @@ python server/miniJarvis_final.py
 
 
 
-Note : There is a schematic in main folder.It was done in Kicad, where exact model from esp32u can be different from this table for some GPIOS like LEDs. Feel free to use ESP32 pinout to assign the GPIOS as needed.
+Note : There is a schematic in images folder. It was done in Kicad, where exact model
+from esp32u can be different from this table for some GPIOS like LEDs. Feel free to
+ use ESP32 pinout to assign the GPIOS as needed.
 
