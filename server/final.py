@@ -10,16 +10,18 @@ import time
 import queue
 import urllib.request
 
+
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 
 # ===== MODELS =====
-MODEL_RU = ""
-MODEL_EN = ""
+MODEL_RU = "/Users/seitovmaulet/Downloads/vosk-model-small-ru-0.22"
+MODEL_EN = "/Users/seitovmaulet/Downloads/vosk-model-small-en-us-0.15"
 SAMPLE_RATE = 16000
 
 # ===== TCP CONFIG =====
 HOST = "0.0.0.0"
 PORT = 6000
+
 
 print("Loading RU model...")
 model_ru = Model(MODEL_RU)
@@ -439,23 +441,61 @@ def generate_reply(text: str) -> str:
         return "Кешір, жауап генерациясында қате болды."
 
 
-def tts_bytes(text: str) -> bytes:
+# ===== TTS CACHE =====
+TTS_CACHE_DIR = "tts_cache"
+import hashlib
+import os
+
+if not os.path.exists(TTS_CACHE_DIR):
+    os.makedirs(TTS_CACHE_DIR)
+
+
+def get_tts_cache_path(text: str) -> str:
+    h = hashlib.md5(text.encode("utf-8")).hexdigest()
+    return os.path.join(TTS_CACHE_DIR, f"{h}.pcm")
+
+
+def tts_bytes_stream(text: str):
+    """
+    Yields chunks of PCM audio.
+    First checks cache. If not found, calls OpenAI and saves to cache.
+    """
     text = text.strip()
     if not text:
-        return b""
+        return
+
+    cache_path = get_tts_cache_path(text)
+    if os.path.exists(cache_path):
+        print(f"TTS CACHE HIT: {text}")
+        with open(cache_path, "rb") as f:
+            while True:
+                chunk = f.read(4096)
+                if not chunk:
+                    break
+                yield chunk
+        return
+
+    print(f"TTS CACHE MISS: {text}")
     try:
-        resp = client.audio.speech.create(
+        # We'll save the full audio to cache while streaming
+        full_audio = bytearray()
+        
+        with client.audio.speech.with_streaming_response.create(
             model="gpt-4o-mini-tts",
             voice="onyx",
             input=text,
             response_format="pcm",
-        )
-        audio_bytes = resp.read()
-        print(f"TTS: {len(audio_bytes)} bytes")
-        return audio_bytes
+        ) as response:
+            for chunk in response.iter_bytes(chunk_size=4096):
+                full_audio.extend(chunk)
+                yield chunk
+        
+        # Save to cache after successful stream
+        with open(cache_path, "wb") as f:
+            f.write(full_audio)
+            
     except Exception as e:
-        print("TTS ERROR:", e)
-        return b""
+        print("TTS STREAM ERROR:", e)
 
 
 def speak(conn, text):
@@ -605,22 +645,39 @@ def speak_worker():
             if conn is None:
                 continue
 
-            # show text on OLED
-            try:
-                conn.sendall((text + "\n").encode("utf-8"))
-            except OSError:
-                pass
-
-            audio = tts_bytes(text)
-            if audio:
-                send_line(conn, "__speaking_on__")
-                header = f"__audio_len__ {len(audio)}\n"
+            # We use a generator to get chunks as they arrive
+            # But we only send the text to OLED when we have the FIRST chunk ready
+            # to ensure perfect synchronization.
+            
+            first_chunk = True
+            
+            for chunk in tts_bytes_stream(text):
+                if first_chunk:
+                    # Sync: OLED text sent exactly when audio starts
+                    try:
+                        conn.sendall((text + "\n").encode("utf-8"))
+                        send_line(conn, "__speaking_on__")
+                    except OSError:
+                        pass
+                    first_chunk = False
+                
+                # Send chunk header + chunk
+                header = f"__audio_len__ {len(chunk)}\n"
                 try:
                     conn.sendall(header.encode("utf-8"))
-                    conn.sendall(audio)
+                    conn.sendall(chunk)
+                except OSError:
+                    break
+            
+            if not first_chunk:
+                send_line(conn, "__speaking_off__")
+            else:
+                # If no audio was generated (e.g. error), still show text
+                try:
+                    conn.sendall((text + "\n").encode("utf-8"))
                 except OSError:
                     pass
-                send_line(conn, "__speaking_off__")
+                    
         finally:
             SPEAK_QUEUE.task_done()
 
@@ -726,8 +783,6 @@ def play_from_youtube_video(query: str) -> bool:
     if not chrome_open_url(url, new_tab=True):
         return False
 
-    time.sleep(2.0)
-
     # Click by first render
     js_click_first = r"""
 (() => {
@@ -740,12 +795,21 @@ def play_from_youtube_video(query: str) -> bool:
   return "CLICKED_FIRST";
 })();
 """
-    res = chrome_execute_js(js_click_first)
-    print("YT CLICK:", res)
+
+    # Wait for page to load and first render to appear
+    res = "NO_VIDEO_RENDERER"
+    deadline = time.time() + 8.0
+    while time.time() < deadline:
+        res = chrome_execute_js(js_click_first)
+        print("YT CLICK ATTEMPT:", res)
+        if "CLICKED_FIRST" in (res or ""):
+            break
+        time.sleep(0.5)
+
     if "CLICKED_FIRST" not in (res or ""):
         return False
 
-    time.sleep(2.0)
+    time.sleep(1.5) # small buffer for the video page to start loading
 
     # Check if no errors with re-directing to youtube.music
     u = chrome_active_url()
@@ -826,24 +890,25 @@ def yt_force_play() -> bool:
 # ====================================================================================================
 
 
-def parse_and_execute_command(user_text: str) -> str | None:
+def parse_and_execute_command(user_text: str, conn: socket.socket) -> str | None:
     """
     Returns a short assistant message if a command was executed.
     Returns None if this is not a command (so it should go to GPT).
     Safe: whitelist only.
     """
     t = normalize_text(user_text)
-    t = normalize_text(user_text)
 
     # ---- EN commands ----
     if t == "weather" or t.startswith("weather "):
         loc = user_text[len("weather") :].strip()
+        speak(conn, "Checking weather.") # Early feedback
         return get_weather_wttr(loc, current_lang)
 
     if t.startswith("open playlist ") and len(t) > len("open playlist "):
-        pl = t[len("open playlist ") :].strip()  # use t (already cleaned)
+        pl = t[len("open playlist ") :].strip()
+        speak(conn, "Opening playlist.") # Early feedback
         ok = mac_music_play_playlist(pl, shuffle=True)
-        return "Opening playlist." if ok else "No results in Apple Music."
+        return "Done." if ok else "No results in Apple Music."
 
     if t.startswith("open "):
         target = t[len("open ") :].strip()
@@ -864,14 +929,16 @@ def parse_and_execute_command(user_text: str) -> str | None:
     if t.startswith("search for "):
         q = t[len("search for ") :].strip()
         if q:
+            speak(conn, "Searching.") # Early feedback
             ok = mac_search_web(q)
-            return "Searching." if ok else "I could not open the browser."
+            return "Done." if ok else "I could not open the browser."
         return "Say the query."
 
     if t.startswith("turn on ") and len(t) > len("turn on "):
         q = t[len("turn on ") :].strip()
+        speak(conn, "Okay.") # Early feedback
         ok = play_from_youtube_video(q)
-        return "Ok" if ok else "Failed."
+        return "Done." if ok else "Failed."
 
     if t.startswith("type "):
         content = user_text.strip()[len("type ") :].strip()  
@@ -967,42 +1034,45 @@ def parse_and_execute_command(user_text: str) -> str | None:
 
     if t.startswith("launch ") and len(t) > len("launch "):
         q = user_text[len("launch ") :].strip()
+        speak(conn, "Okay.") # Early feedback
         ok = play_from_youtube_video(q)
-        return "Okay" if ok else "Failed to open YouTube."
+        return "Done." if ok else "Failed."
 
     if t.startswith("play ") and len(t) > len("play "):
         q = user_text[len("play ") :].strip()
+        speak(conn, "Okay.") # Early feedback
         ok = play_from_youtube_video(q)
-        return "Okay" if ok else "Failed. Check Accessibility."
+        return "Done." if ok else "Failed."
 
-    if t.startswith("turn on ") and len(t) > len("turn on "):
-        q = user_text[len("turn on ") :].strip()
-        ok = play_from_youtube_video(q)
-        return "Okay" if ok else "Failed. Check Accessibility."
+    # Note: "turn on" already handled above for EN
 
     # ---- RU commands -----------------------------------------
 
     if t == "погода" or t.startswith("погода "):
         loc = user_text[len("погода") :].strip()
+        speak(conn, "Сейчас узнаю.") # Early feedback
         return get_weather_wttr(loc, current_lang)
 
     if t.startswith("включи ") and len(t) > len("включи "):
         q = user_text[len("включи ") :].strip()
+        speak(conn, "Хорошо.") # Early feedback
         ok = play_from_youtube_video(q)
-        return "Хорошо." if ok else "Не получилось. Проверь Accessibility."
+        return "Готово." if ok else "Не получилось."
 
     if t.startswith("поставь ") and len(t) > len("поставь "):
         q = user_text[len("поставь ") :].strip()
+        speak(conn, "Окей.") # Early feedback
         ok = play_from_youtube_video(q)
-        return "Хорошо. " if ok else "Не получилось. Проверь Accessibility."
+        return "Готово." if ok else "Не получилось."
 
     if t.startswith("открой плейлист ") and len(t) > len("открой плейлист "):
         pl = user_text.strip()[len("открой плейлист ") :].strip()
+        speak(conn, "Включаю.") # Early feedback
         ok = mac_music_play_playlist(pl, shuffle=True)
         return (
-            "Включаю плейлист."
+            "Готово."
             if ok
-            else "Не нашёл плейлист в Apple Music. Скажи точное название."
+            else "Не нашёл плейлист в Apple Music."
         )
 
     if t.startswith("открой "):
@@ -1011,8 +1081,8 @@ def parse_and_execute_command(user_text: str) -> str | None:
         app_key = APP_ALIASES.get(target)
         if app_key:
             ok = mac_open_app(app_key)
-            return "Открыл." if ok else "Не получилось открыть."
-        return "приложение не найдено"
+            return "Открыл." if ok else "Не получилось."
+        return "Приложение не найдено."
 
     if t.startswith("переключись на "):
         target = t[len("переключись на ") :].strip()
@@ -1020,21 +1090,22 @@ def parse_and_execute_command(user_text: str) -> str | None:
         app_key = APP_ALIASES.get(target)
         if app_key:
             ok = mac_open_app(app_key)
-            return "Переключил." if ok else "Не получилось переключить."
-        return "Этого приложения нет в списке разрешённых."
+            return "Переключил." if ok else "Не получилось."
+        return "Этого приложения нет в списке."
 
     if t.startswith("поиск "):
         q = user_text.strip()[len("поиск ") :].strip()
         if q:
+            speak(conn, "Ищу.") # Early feedback
             ok = mac_search_web(q)
-            return "Ищу." if ok else "Не получилось открыть браузер."
+            return "Готово." if ok else "Не получилось."
         return "Скажи запрос."
 
     if t.startswith("напечатай "):
         content = user_text.strip()[len("напечатай ") :].strip()
         if content:
             ok = mac_type_text(content)
-            return "Напечатал." if ok else "Не могу печатать. Проверь Accessibility."
+            return "Напечатал." if ok else "Не могу печатать."
         return "Скажи, что напечатать."
 
     if t.startswith("нажми "):
@@ -1042,8 +1113,8 @@ def parse_and_execute_command(user_text: str) -> str | None:
         key_name = KEY_ALIASES_RU.get(key)
         if key_name:
             ok = mac_press_key(key_name)
-            return "Готово." if ok else "Не получилось нажать."
-        return "Разрешённые клавиши: энтер, таб, эскейп, пробел, бэкспейс."
+            return "Готово." if ok else "Не получилось."
+        return "Клавиша не поддерживается."
 
     if t in ("громче", "погромче"):
         ok = mac_volume(delta=6)
@@ -1083,15 +1154,11 @@ def parse_and_execute_command(user_text: str) -> str | None:
             "закрой вкладку хром",
         ):
             ok = chrome_close_tab()
-            return (
-                "Закрыл вкладку."
-                if ok
-                else "Не получилось закрыть вкладку. Проверь Accessibility."
-            )
+            return "Закрыл." if ok else "Не получилось."
 
         if t in ("закрой окно", "закрой окно хром", "закрой окно в хроме"):
             ok = chrome_close_window()
-            return "Закрыл окно." if ok else "Повтори"
+            return "Закрыл." if ok else "Не получилось."
 
         if t in (
             "закрой хром",
@@ -1100,24 +1167,15 @@ def parse_and_execute_command(user_text: str) -> str | None:
             "выйди из хрома",
         ):
             ok = chrome_close_all_tabs()
-            return "Ок." if ok else "Не получилось. Проверь Accessibility."
+            return "Ок." if ok else "Не получилось."
 
         target = t[len("закрой ") :].strip()
         target = RU_APP_ALIASES.get(target, target)
         app_key = APP_ALIASES.get(target)
         if app_key:
             ok = mac_quit_app(app_key)
-            return "Закрыл." if ok else "Не получилось закрыть."
-        return "Не получилось"
-
-    if t.startswith("выйди из "):
-        target = t[len("выйди из ") :].strip()
-        target = RU_APP_ALIASES.get(target, target)
-        app_key = APP_ALIASES.get(target)
-        if app_key:
-            ok = mac_quit_app(app_key)
-            return "Вышел." if ok else "Не получилось."
-        return "Не найдено"
+            return "Закрыл." if ok else "Не получилось."
+        return "Не получилось."
 
     return None
 
@@ -1212,7 +1270,7 @@ def handle_client(conn: socket.socket, addr):
                     continue
 
                 # Try safe command execution
-                cmd_result = parse_and_execute_command(text)
+                cmd_result = parse_and_execute_command(text, conn)
                 if cmd_result is not None:
                     speak(conn, cmd_result)
                     continue
