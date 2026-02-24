@@ -14,8 +14,8 @@ import urllib.request
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 
 # ===== MODELS =====
-MODEL_RU = "/Users/seitovmaulet/Downloads/vosk-model-small-ru-0.22"
-MODEL_EN = "/Users/seitovmaulet/Downloads/vosk-model-small-en-us-0.15"
+MODEL_RU = ""
+MODEL_EN = ""
 SAMPLE_RATE = 16000
 
 # ===== TCP CONFIG =====
