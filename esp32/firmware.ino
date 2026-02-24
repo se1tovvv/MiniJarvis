@@ -7,11 +7,11 @@
 #include <math.h>
 
 // ======== WIFI CONFIG ========
-const char* WIFI_SSID     = "Iphone Maulet";
-const char* WIFI_PASSWORD = "12341234";
+const char* WIFI_SSID     = "";
+const char* WIFI_PASSWORD = "";
 
 // IP and server's port (PC / Mac)
-const char*   SERVER_IP    = "172.20.10.3";
+const char*   SERVER_IP    = "";
 const uint16_t SERVER_PORT = 6000;
 
 WiFiClient client;
