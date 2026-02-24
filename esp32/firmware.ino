@@ -7,15 +7,14 @@
 #include <math.h>
 
 // ======== WIFI CONFIG ========
-const char* WIFI_SSID     = "YOUR SSID";
-const char* WIFI_PASSWORD = "YOUR PASSWORD";
+const char* WIFI_SSID     = "Iphone Maulet";
+const char* WIFI_PASSWORD = "12341234";
 
 // IP and server's port (PC / Mac)
-const char*   SERVER_IP    = "YOUR IP";
+const char*   SERVER_IP    = "172.20.10.3";
 const uint16_t SERVER_PORT = 6000;
 
 WiFiClient client;
-
 // ======== I2S MIC (INMP441) ========
 #define I2S_WS   25   // LRCL / WS
 #define I2S_SCK  26   // BCLK / SCK
@@ -113,7 +112,7 @@ void setup() {
   if (g_oledOK) {
     u8g2.clearBuffer();
     u8g2.setFont(u8g2_font_5x7_t_cyrillic);
-    u8g2.drawUTF8(0, 14, "WiFi подключение");
+    u8g2.drawUTF8(0, 14, "WiFi connecting...");
     u8g2.sendBuffer();
   }
 
@@ -325,7 +324,7 @@ void selectLanguageOnce() {
   if (g_oledOK) {
     u8g2.clearBuffer();
     u8g2.setFont(u8g2_font_5x7_t_cyrillic);
-    u8g2.drawUTF8(0, 14, "Choose the language");
+    u8g2.drawUTF8(0, 14, "Choose language:");
     u8g2.drawUTF8(0, 32, "LEFT (GPIO16) = RU");
     u8g2.drawUTF8(0, 44, "RIGHT (BTN4)  = EN");
     u8g2.sendBuffer();
@@ -573,11 +572,11 @@ void ensure_connection() {
   if (client.connect(SERVER_IP, SERVER_PORT)) {
     Serial.println("Server connected");
     client.println("HELLO ESP32 PCM16 16000");
-    showOledMessage("Server:", "Connected");
+    showOledMessage("Server:", "connected");
     delay(800);
   } else {
     Serial.println("Server connect failed");
-    showOledMessage("Server", "Connection error");
+    showOledMessage("Server:", "Connection failure");
     delay(1000);
   }
 }
