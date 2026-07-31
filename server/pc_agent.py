@@ -47,7 +47,8 @@ PC_APPS = {
     "steam":    ("uri",   "steam://open/main"),
     "epic":     ("uri",   "com.epicgames.launcher:"),
     "chrome":   ("start", "chrome"),
-    "Discord":  ("start", "Discord"),
+    # Discord isn't on PATH, so `start discord` fails — let it fall through to
+    # the Start Menu shortcut search (finds Discord.lnk and launches it right).
     "spotify":  ("uri",   "spotify:"),
     "obs":      ("start", "obs64"),
     "notepad":  ("start", "notepad"),
@@ -77,7 +78,7 @@ PC_ALIASES = {
     "хром": "chrome", "гугл": "chrome", "гугл хром": "chrome", "гугл chrome": "chrome",
     "edge": "edge", "microsoft edge": "edge", "эдж": "edge", "едж": "edge",
     # --- chat / social ---
-    "Discord": "discord", "дискорд": "discord",
+    "discord": "discord", "дискорд": "discord",
     "telegram": "telegram", "телеграм": "telegram", "телеграмм": "telegram", "телега": "telegram",
     "whatsapp": "whatsapp", "ватсап": "whatsapp", "вотсап": "whatsapp", "вацап": "whatsapp",
     "skype": "skype", "скайп": "skype",
@@ -128,12 +129,12 @@ CLOSE_EXE = {
 # ---- Scene modes: close one set of apps, open another. Edit freely. ----
 PC_MODES = {
     "game": {
-        "open":  ["Discord", "steam", "TLauncher"],
+        "open":  ["discord", "steam"],
         "close": ["chrome", "edge", "word", "excel", "powerpoint", "notion",
                   "kicad", "claude"],
     },
     "work": {
-        "open":  ["claude - ярлык", "chrome", "kicad", "Visual Studio Code"],
+        "open":  ["claude", "chrome", "kicad"],
         "close": ["steam", "discord", "spotify", "cs2", "dota2", "minecraft",
                   "epic", "valorant"],
     },
