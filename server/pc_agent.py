@@ -55,22 +55,55 @@ PC_APPS = {
     # "myapp":  ("path", r"C:\\Program Files\\MyApp\\myapp.exe"),
 }
 
-# spoken alias (lowercase) -> canonical key
+# spoken alias (lowercase) -> canonical name. For anything NOT in PC_APPS, the
+# canonical is matched against your Start Menu / Desktop shortcut names, so it
+# just needs to resemble the app's shortcut (e.g. "notion" -> Notion.lnk).
 PC_ALIASES = {
+    # --- games (launched via PC_APPS Steam ids) ---
     "counter strike": "cs2", "counter-strike": "cs2", "cs": "cs2", "cs2": "cs2",
     "csgo": "cs2", "cs go": "cs2", "cs 2": "cs2",
     "контр страйк": "cs2", "контер страйк": "cs2", "кс": "cs2", "кс2": "cs2",
-    "ксго": "cs2", "кс го": "cs2", "контрстрайк": "cs2",
+    "ксго": "cs2", "кс го": "cs2", "контрстрайк": "cs2", "кс два": "cs2",
     "dota": "dota2", "dota 2": "dota2", "dota2": "dota2",
-    "дота": "dota2", "дота 2": "dota2", "дота2": "dota2",
+    "дота": "dota2", "дота 2": "dota2", "дота2": "dota2", "дота два": "dota2",
     "valorant": "valorant", "валорант": "valorant",
+    "minecraft": "minecraft", "майнкрафт": "minecraft", "майн": "minecraft",
+    # --- launchers / stores ---
     "steam": "steam", "стим": "steam",
     "epic": "epic", "epic games": "epic", "эпик": "epic",
-    "chrome": "chrome", "google chrome": "chrome", "хром": "chrome",
-    "гугл": "chrome", "гугл хром": "chrome",
+    # --- browsers ---
+    "chrome": "chrome", "google chrome": "chrome", "google": "chrome",
+    "хром": "chrome", "гугл": "chrome", "гугл хром": "chrome", "гугл chrome": "chrome",
+    "edge": "edge", "microsoft edge": "edge", "эдж": "edge", "едж": "edge",
+    # --- chat / social ---
     "discord": "discord", "дискорд": "discord",
+    "telegram": "telegram", "телеграм": "telegram", "телеграмм": "telegram", "телега": "telegram",
+    "whatsapp": "whatsapp", "ватсап": "whatsapp", "вотсап": "whatsapp", "вацап": "whatsapp",
+    "skype": "skype", "скайп": "skype",
+    # --- media ---
     "spotify": "spotify", "спотифай": "spotify", "спотифи": "spotify",
     "obs": "obs", "обс": "obs",
+    # --- dev / tools ---
+    "vscode": "visual studio code", "vs code": "visual studio code",
+    "visual studio code": "visual studio code", "вс код": "visual studio code",
+    "вижуал студио": "visual studio code", "код": "visual studio code",
+    "github": "github desktop", "гитхаб": "github desktop", "github desktop": "github desktop",
+    "arduino": "arduino", "ардуино": "arduino", "arduino ide": "arduino",
+    "kicad": "kicad", "кикад": "kicad", "кад": "kicad",
+    "notion": "notion", "ноушн": "notion", "ноушен": "notion", "ноушон": "notion",
+    "fusion": "fusion", "фьюжн": "fusion", "фьюжен": "fusion", "autodesk fusion": "fusion",
+    # --- office ---
+    "word": "word", "ворд": "word", "microsoft word": "word",
+    "powerpoint": "powerpoint", "поверпоинт": "powerpoint", "презентация": "powerpoint",
+    "excel": "excel", "эксель": "excel",
+    # --- utilities ---
+    "radmin": "radmin", "радмин": "radmin", "radmin vpn": "radmin", "vpn": "radmin",
+    "aida": "aida64", "aida64": "aida64", "аида": "aida64", "аида64": "aida64",
+    "gpuz": "gpu-z", "gpu z": "gpu-z", "гпу з": "gpu-z",
+    "cpuz": "cpu-z", "cpu z": "cpu-z", "цпу з": "cpu-z",
+    "nvidia": "nvidia", "нвидиа": "nvidia", "нвидия": "nvidia", "nvidia app": "nvidia",
+    "logitech": "logitech g hub", "g hub": "logitech g hub", "джихаб": "logitech g hub",
+    "obs studio": "obs",
     "notepad": "notepad", "блокнот": "notepad",
     "explorer": "explorer", "проводник": "explorer",
 }
@@ -80,6 +113,13 @@ CLOSE_EXE = {
     "chrome": "chrome.exe", "discord": "Discord.exe", "cs2": "cs2.exe",
     "dota2": "dota2.exe", "steam": "steam.exe", "spotify": "Spotify.exe",
     "obs": "obs64.exe", "notepad": "notepad.exe", "valorant": "VALORANT.exe",
+    "edge": "msedge.exe", "telegram": "Telegram.exe", "whatsapp": "WhatsApp.exe",
+    "skype": "Skype.exe", "visual studio code": "Code.exe", "github desktop": "GitHubDesktop.exe",
+    "arduino": "Arduino IDE.exe", "kicad": "kicad.exe", "notion": "Notion.exe",
+    "fusion": "Fusion360.exe", "word": "WINWORD.EXE", "powerpoint": "POWERPNT.EXE",
+    "excel": "EXCEL.EXE", "radmin": "Radmin.exe", "aida64": "aida64.exe",
+    "gpu-z": "GPU-Z.exe", "cpu-z": "cpuz.exe", "nvidia": "NVIDIA App.exe",
+    "logitech g hub": "lghub.exe", "minecraft": "Minecraft.Windows.exe",
 }
 
 # Windows virtual key codes
@@ -100,24 +140,92 @@ def _startfile(arg: str):
         subprocess.Popen(["cmd", "/c", "start", "", arg])
 
 
+def _start_menu_dirs():
+    dirs = []
+    for env in ("ProgramData", "APPDATA"):
+        base = os.environ.get(env)
+        if base:
+            dirs.append(os.path.join(base, "Microsoft", "Windows",
+                                     "Start Menu", "Programs"))
+    for env in ("USERPROFILE", "PUBLIC"):
+        base = os.environ.get(env)
+        if base:
+            dirs.append(os.path.join(base, "Desktop"))
+    return [d for d in dirs if os.path.isdir(d)]
+
+
+def _find_shortcut(name: str):
+    """Find the best-matching .lnk/.url in the Start Menu / Desktop by name."""
+    name_l = (name or "").strip().lower()
+    if not name_l:
+        return None
+    exact = None
+    best = None  # (stem_length, path) — shortest stem wins as closest match
+    for d in _start_menu_dirs():
+        for root, _dirs, files in os.walk(d):
+            for f in files:
+                low = f.lower()
+                if not (low.endswith(".lnk") or low.endswith(".url")):
+                    continue
+                stem = os.path.splitext(low)[0]
+                if stem == name_l:
+                    exact = os.path.join(root, f)
+                elif name_l in stem or stem in name_l:
+                    if best is None or len(stem) < best[0]:
+                        best = (len(stem), os.path.join(root, f))
+        if exact:
+            return exact
+    return exact or (best[1] if best else None)
+
+
 def do_launch(target: str):
     key = _canon(target)
     spec = PC_APPS.get(key)
-    if not spec:
-        return False, f"unknown app: {target}"
-    method, val = spec
+    if spec:
+        method, val = spec
+        try:
+            if method == "steam":
+                _startfile(f"steam://rungameid/{val}")
+            elif method == "uri":
+                _startfile(val)
+            elif method == "path":
+                subprocess.Popen([val])
+            elif method == "start":
+                subprocess.Popen(["cmd", "/c", "start", "", val])
+            else:
+                return False, f"bad method: {method}"
+            return True, key
+        except Exception as e:
+            return False, str(e)
+
+    # Fallback: launch by matching a Start Menu / Desktop shortcut (covers any
+    # installed app without hardcoding a path).
+    lnk = _find_shortcut(key) or _find_shortcut(target)
+    if lnk:
+        try:
+            _startfile(lnk)
+            return True, os.path.splitext(os.path.basename(lnk))[0]
+        except Exception as e:
+            return False, str(e)
+    return False, f"not found: {target}"
+
+
+def do_power(mode: str):
     try:
-        if method == "steam":
-            _startfile(f"steam://rungameid/{val}")
-        elif method == "uri":
-            _startfile(val)
-        elif method == "path":
-            subprocess.Popen([val])
-        elif method == "start":
-            subprocess.Popen(["cmd", "/c", "start", "", val])
+        if mode == "shutdown":
+            subprocess.Popen(["shutdown", "/s", "/t", "5"])
+        elif mode == "restart":
+            subprocess.Popen(["shutdown", "/r", "/t", "5"])
+        elif mode == "logoff":
+            subprocess.Popen(["shutdown", "/l"])
+        elif mode == "lock":
+            subprocess.Popen(["rundll32.exe", "user32.dll,LockWorkStation"])
+        elif mode == "sleep":
+            # Note: disable hibernate (powercfg /h off) or this may hibernate.
+            subprocess.Popen(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"])
         else:
-            return False, f"bad method: {method}"
-        return True, key
+            return False, f"bad power mode: {mode}"
+        return True, mode
     except Exception as e:
         return False, str(e)
 
@@ -197,6 +305,8 @@ def handle(cmd: dict) -> dict:
         ok, info = do_open_url(cmd.get("url", ""))
     elif action == "search":
         ok, info = do_search(cmd.get("query", ""))
+    elif action == "power":
+        ok, info = do_power(cmd.get("mode", ""))
     else:
         ok, info = False, f"unknown action: {action}"
     return {"ok": ok, "info": info if ok else None, "error": None if ok else info}
