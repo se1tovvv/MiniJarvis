@@ -77,7 +77,7 @@ PC_ALIASES = {
     "хром": "chrome", "гугл": "chrome", "гугл хром": "chrome", "гугл chrome": "chrome",
     "edge": "edge", "microsoft edge": "edge", "эдж": "edge", "едж": "edge",
     # --- chat / social ---
-    "discord": "discord", "дискорд": "discord",
+    "Discord": "discord", "дискорд": "discord",
     "telegram": "telegram", "телеграм": "telegram", "телеграмм": "telegram", "телега": "telegram",
     "whatsapp": "whatsapp", "ватсап": "whatsapp", "вотсап": "whatsapp", "вацап": "whatsapp",
     "skype": "skype", "скайп": "skype",
@@ -128,12 +128,12 @@ CLOSE_EXE = {
 # ---- Scene modes: close one set of apps, open another. Edit freely. ----
 PC_MODES = {
     "game": {
-        "open":  ["discord", "steam"],
+        "open":  ["Discord", "steam", "TLauncher"],
         "close": ["chrome", "edge", "word", "excel", "powerpoint", "notion",
                   "kicad", "claude"],
     },
     "work": {
-        "open":  ["claude", "chrome", "kicad"],
+        "open":  ["claude - ярлык", "chrome", "kicad", "Visual Studio Code"],
         "close": ["steam", "discord", "spotify", "cs2", "dota2", "minecraft",
                   "epic", "valorant"],
     },
