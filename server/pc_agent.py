@@ -91,6 +91,7 @@ PC_ALIASES = {
     "arduino": "arduino", "ардуино": "arduino", "arduino ide": "arduino",
     "kicad": "kicad", "кикад": "kicad", "кад": "kicad",
     "notion": "notion", "ноушн": "notion", "ноушен": "notion", "ноушон": "notion",
+    "claude": "claude", "клод": "claude", "клауд": "claude", "claude code": "claude",
     "fusion": "fusion", "фьюжн": "fusion", "фьюжен": "fusion", "autodesk fusion": "fusion",
     # --- office ---
     "word": "word", "ворд": "word", "microsoft word": "word",
@@ -120,6 +121,21 @@ CLOSE_EXE = {
     "excel": "EXCEL.EXE", "radmin": "Radmin.exe", "aida64": "aida64.exe",
     "gpu-z": "GPU-Z.exe", "cpu-z": "cpuz.exe", "nvidia": "NVIDIA App.exe",
     "logitech g hub": "lghub.exe", "minecraft": "Minecraft.Windows.exe",
+    "claude": "claude.exe", "epic": "EpicGamesLauncher.exe",
+}
+
+# ---- Scene modes: close one set of apps, open another. Edit freely. ----
+PC_MODES = {
+    "game": {
+        "open":  ["discord", "steam"],
+        "close": ["chrome", "edge", "word", "excel", "powerpoint", "notion",
+                  "kicad", "claude"],
+    },
+    "work": {
+        "open":  ["claude", "chrome", "kicad"],
+        "close": ["steam", "discord", "spotify", "cs2", "dota2", "minecraft",
+                  "epic", "valorant"],
+    },
 }
 
 # Windows virtual key codes
@@ -208,6 +224,22 @@ def do_launch(target: str):
         except Exception as e:
             return False, str(e)
     return False, f"not found: {target}"
+
+
+def do_mode(name: str):
+    scene = PC_MODES.get((name or "").strip().lower())
+    if not scene:
+        return False, f"unknown mode: {name}"
+    closed, opened = [], []
+    for app in scene.get("close", []):
+        ok, _ = do_close(app)
+        if ok:
+            closed.append(app)
+    for app in scene.get("open", []):
+        ok, _ = do_launch(app)
+        if ok:
+            opened.append(app)
+    return True, {"opened": opened, "closed": closed}
 
 
 def do_power(mode: str):
@@ -307,6 +339,8 @@ def handle(cmd: dict) -> dict:
         ok, info = do_search(cmd.get("query", ""))
     elif action == "power":
         ok, info = do_power(cmd.get("mode", ""))
+    elif action == "mode":
+        ok, info = do_mode(cmd.get("name", ""))
     else:
         ok, info = False, f"unknown action: {action}"
     return {"ok": ok, "info": info if ok else None, "error": None if ok else info}
