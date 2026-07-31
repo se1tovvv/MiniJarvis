@@ -30,9 +30,10 @@ except Exception:
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ================= CONFIG =================
+AGENT_VERSION = "2.0-modes+power"   # bump when you change this file
 HOST = "0.0.0.0"
 PORT = 6001
-TOKEN = "change-me-please"   # MUST match PC_AGENT_TOKEN on the Mac
+TOKEN = "jarvis-pc-7712"   # MUST match PC_AGENT_TOKEN on the Mac
 
 # canonical key -> (method, value)
 #   steam : launch a Steam game by app id  (CS2=730, Dota2=570)
@@ -362,7 +363,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/ping":
             if not self._auth():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
-            return self._send(200, {"ok": True,
+            return self._send(200, {"ok": True, "version": AGENT_VERSION,
                                     "host": os.environ.get("COMPUTERNAME", "pc")})
         self._send(404, {"ok": False, "error": "not found"})
 
@@ -392,7 +393,7 @@ def main():
     if TOKEN == "change-me-please":
         print("WARNING: set a unique TOKEN (must match the Mac side).")
     srv = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"MiniJarvis PC agent listening on {HOST}:{PORT}")
+    print(f"MiniJarvis PC agent v{AGENT_VERSION} listening on {HOST}:{PORT}")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
