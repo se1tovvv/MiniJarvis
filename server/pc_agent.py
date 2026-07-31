@@ -47,7 +47,7 @@ PC_APPS = {
     "steam":    ("uri",   "steam://open/main"),
     "epic":     ("uri",   "com.epicgames.launcher:"),
     "chrome":   ("start", "chrome"),
-    "discord":  ("start", "discord"),
+    "Discord":  ("start", "Discord"),
     "spotify":  ("uri",   "spotify:"),
     "obs":      ("start", "obs64"),
     "notepad":  ("start", "notepad"),
