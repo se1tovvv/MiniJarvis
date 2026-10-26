@@ -5,11 +5,11 @@ A real-time voice assistant I designed and built from scratch — custom circuit
 ![MiniJarvis — custom PCB](images/PCB-Mini-Jarvis.jpg)
 
 ## Recent updates
-- 🎬 **Personality levels** — adjustable humor/wit, inspired by TARS in *Interstellar*.
-- 🖥️ **PC control over Wake-on-LAN** with **Gaming** and **Work** modes — game mode auto-opens/closes Steam and Minecraft; work mode opens KiCad, VS Code, and Claude.
-- 📺 **LG webOS TV control** via Wake-on-LAN — launch apps, control playback, and adjust volume.
-- 🔗 **Multi-command chaining** — one voice prompt fires several commands across multiple devices at once.
-- ⚡ **Faster response output.**
+-  **Personality levels** — adjustable humor/wit, inspired by TARS in *Interstellar*.
+-  **PC control over Wake-on-LAN** with **Gaming** and **Work** modes — game mode auto-opens/closes Steam and Minecraft; work mode opens KiCad, VS Code, and Claude.
+-  **LG webOS TV control** via Wake-on-LAN — launch apps, control playback, and adjust volume.
+-  **Multi-command chaining** — one voice prompt fires several commands across multiple devices at once.
+-  **Faster response output.**
 
 ## Features
 - Live speech recognition with an I2S **INMP441** microphone
