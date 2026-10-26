@@ -1,8 +1,15 @@
 # MiniJarvis
 
-A real-time voice assistant I designed and built from scratch — custom circuit drawn in **KiCad**, hand-soldered on protoboard, running **ESP32** firmware plus a **Python** server. It listens, transcribes speech **offline** with Vosk, sends the text to GPT, and answers back on a **128×64 OLED** and out loud through a speaker.
+A real-time voice assistant I designed and built from scratch — custom circuit drawn in **KiCad**, laid out and **fabricated as my own PCB**, running **ESP32** firmware plus a **Python** server. It listens, transcribes speech **offline** with Vosk, sends the text to GPT, and answers back on a **128×64 OLED**, out loud through a speaker — and can drive my PC and TV over the network.
 
-![MiniJarvis — assembled board](images/Front%20View.jpg)
+![MiniJarvis — custom PCB](images/PCB-Mini-Jarvis.jpg)
+
+## Recent updates
+- 🎬 **Personality levels** — adjustable humor/wit, inspired by TARS in *Interstellar*.
+- 🖥️ **PC control over Wake-on-LAN** with **Gaming** and **Work** modes — game mode auto-opens/closes Steam and Minecraft; work mode opens KiCad, VS Code, and Claude.
+- 📺 **LG webOS TV control** via Wake-on-LAN — launch apps, control playback, and adjust volume.
+- 🔗 **Multi-command chaining** — one voice prompt fires several commands across multiple devices at once.
+- ⚡ **Faster response output.**
 
 ## Features
 - Live speech recognition with an I2S **INMP441** microphone
@@ -17,24 +24,22 @@ A real-time voice assistant I designed and built from scratch — custom circuit
 
 ## The build
 
-I designed the circuit in KiCad, then assembled it by hand on a **7×9 cm protoboard** — point-to-point soldered — and brought it up: flashing, probing the wiring, and fixing connections until every peripheral came alive. It runs off a 3.7 V LiPo through a TP4056 charger, so it works untethered.
+I designed the circuit in KiCad and first breadboarded it on a **7×9 cm protoboard** — point-to-point soldered and brought up by hand, flashing and probing the wiring until every peripheral came alive. Once it worked, I laid out a proper **2-layer PCB**, had it fabricated, and assembled it (even silkscreened my handle on the board). The fabricated board at the top is what runs MiniJarvis today; it's powered by a 3.7 V LiPo through a TP4056 charger, so it runs untethered.
 
-| Front | Back |
-| --- | --- |
-| ![Front of the board](images/Front%20View.jpg) | ![Back of the board, hand-wired](images/Back%20View.jpg) |
+**From schematic to board:**
 
-**Schematic (KiCad):**
-
-![KiCad schematic](images/Jarvis%20Schem.png)
+| KiCad schematic | Protoboard MVP (front) | Protoboard MVP (back) |
+| --- | --- | --- |
+| ![KiCad schematic](images/Jarvis%20Schem.png) | ![Protoboard front](images/Front%20View.jpg) | ![Protoboard back, hand-wired](images/Back%20View.jpg) |
 
 **Core parts**
+- Custom 2-layer PCB (designed in KiCad, fabricated by JLCPCB) — grew out of the 7×9 cm protoboard MVP
 - ESP32-32U module
 - INMP441 I2S microphone
 - MAX98357A I2S amplifier + speaker
 - 128×64 I2C OLED display
 - 2× status LED (Wi-Fi/thinking, mic-active), 2× SMD button (language / scroll)
 - Power switch, female headers + male connectors
-- 7×9 cm protoboard
 - TP4056 charging module + 3.7 V 250 mAh LiPo
 
 ## Software used
@@ -55,8 +60,8 @@ I designed the circuit in KiCad, then assembled it by hand on a **7×9 cm protob
 There is a single ESP32 firmware file you flash once. On the Python side I split the server into three files so you can bring it up step by step:
 
 1. **`server/default.py`** — say *"Jarvis"* or *"Assistant"* to wake it. The LED should stay on while you speak. Ask a few questions, and once it's clean, move on.
-2. **`server/advanced.py`** — adds full PC control. Try *"Jarvis, open Google Chrome"*, etc.
-3. **`server/final.py`** — faster responses, plays music from YouTube and Apple Music (*"Jarvis, turn on Travis Scott"* opens YouTube; an extra command opens Apple Music on macOS), and lets you switch languages by voice without re-initializing the ESP32 with the buttons. For the full command list, see `parse_and_execute_command`.
+2. **`server/advanced.py`** — adds full PC control (Wake-on-LAN, gaming/work modes). Try *"Jarvis, open Google Chrome"*, etc.
+3. **`server/final.py`** — faster responses, plays music from YouTube and Apple Music (*"Jarvis, turn on Travis Scott"* opens YouTube; an extra command opens Apple Music on macOS), chains multiple commands in one prompt, and lets you switch languages by voice without re-initializing the ESP32 with the buttons. For the full command list, see `parse_and_execute_command`.
 
 Start with the **small** Vosk models for a fast server start; they're less accurate, so once everything works, switch to the **larger** models for better recognition. Don't forget to allow VS Code to control the PC.
 
