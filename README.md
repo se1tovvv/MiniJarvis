@@ -1,144 +1,145 @@
 # MiniJarvis
-MiniJarvis is a **real-time voice assistant** built using an ESP32, an I2S microphone and speaker,
-and a Python server running OpenAI APIs.  
-It listens to the user, live-transcribes speech using Vosk, sends the text to GPT,
-and replies back **with both OLED text and spoken audio
 
-Features
-- Live speech recognition using I2S INMP441 microphone
-- Real-time GPT replies using OpenAI API
-- Answer displayed on **128x64 OLED**
-- Answer spoken through **I2S MAX98357A + speaker**
+A real-time voice assistant I designed and built from scratch — custom circuit drawn in **KiCad**, hand-soldered on protoboard, running **ESP32** firmware plus a **Python** server. It listens, transcribes speech **offline** with Vosk, sends the text to GPT, and answers back on a **128×64 OLED** and out loud through a speaker.
+
+![MiniJarvis — assembled board](images/Front%20View.jpg)
+
+## Features
+- Live speech recognition with an I2S **INMP441** microphone
+- Real-time GPT replies via the OpenAI API
+- Answer shown on a **128×64 OLED**
+- Answer spoken through **MAX98357A** I2S amp + speaker
 - Two language modes: **Russian & English**
-- Scrollable OLED output text
-- Voice activity LED indicator
-- Fully offline STT (0 internet required after model download)
-- Modular design — swap ESP32 or peripherals via headers
+- Scrollable multi-line OLED output
+- Voice-activity LED indicator
+- Fully offline STT (no internet needed after the model download)
+- Modular — swap the ESP32 or peripherals via headers
 
+## The build
 
-## Software used:
-- Arduino IDE
-- VS code
+I designed the circuit in KiCad, then assembled it by hand on a **7×9 cm protoboard** — point-to-point soldered — and brought it up: flashing, probing the wiring, and fixing connections until every peripheral came alive. It runs off a 3.7 V LiPo through a TP4056 charger, so it works untethered.
 
-## Hardware used:
-- INMP441 I2S Microphone module
-- MAX98357A I2S Speaker module
-- Speaker
-- OLED I2C Display 128x64 IIC
-- ESP32-32U
-- Power swithc
-- SMD Buttons x2
-- LED x2
-- Female Header & Male connectors
-- Solder plate 7x9cm
-- TP4056 Battery charge module
-- Li-po 3.7V 250 mAh battery
+| Front | Back |
+| --- | --- |
+| ![Front of the board](images/Front%20View.jpg) | ![Back of the board, hand-wired](images/Back%20View.jpg) |
 
+**Schematic (KiCad):**
 
+![KiCad schematic](images/Jarvis%20Schem.png)
 
-##  Usage Flow
-1. ESP32 connects to Wi-Fi and server
-2. OLED asks user to select language (`RU` or `EN`)
-3. User speaks into microphone
-4. Vosk picks up speech → sends text to GPT
+**Core parts**
+- ESP32-32U module
+- INMP441 I2S microphone
+- MAX98357A I2S amplifier + speaker
+- 128×64 I2C OLED display
+- 2× status LED (Wi-Fi/thinking, mic-active), 2× SMD button (language / scroll)
+- Power switch, female headers + male connectors
+- 7×9 cm protoboard
+- TP4056 charging module + 3.7 V 250 mAh LiPo
+
+## Software used
+- Arduino IDE (ESP32 firmware)
+- VS Code (Python server)
+
+## How it works
+1. ESP32 connects to Wi-Fi and the server
+2. OLED asks the user to select a language (`RU` or `EN`)
+3. User speaks into the microphone
+4. Vosk transcribes the speech → sends the text to GPT
 5. GPT returns a short answer
-6. ESP32:
-   - prints text on OLED
-   - streams 24kHz PCM to MAX98357A
-   - LED indicates speech vs. silence
-7. User scrolls multi-line responses with scroll SMD button
+6. ESP32 prints the text on the OLED, streams 24 kHz PCM to the MAX98357A, and the LED shows speech vs. silence
+7. Multi-line answers scroll with the scroll button
 
-## Important note
-There is a single esp32 firmware file, which you upload once. To reach full working structure smoothly, I added 3 more files on the Python server side, which I recomend changing step by step. There are two Vosk speech-to-text models. Change them as you wish. Read the python files and adjust voice commands as needed.
+## Running the server
 
-1. When running default.py, say "Jarvis" or "Assistant" to wake him up. Ideally, when you speak, the LED must turn on untill you stop. Ask several questions, and if there are no mistakes, proceed to advanced.py
+There is a single ESP32 firmware file you flash once. On the Python side I split the server into three files so you can bring it up step by step:
 
-2. Run advanced.py, which has full PC control function. Try saying "Jarvis", open Google Chrome and etc. 
-3. After that, final.py allows user to run music from YouTube and Apple Music. It is much faster in response ouput. Say "Jarvis", turn on Travis Scott as example, which will open youtube. Moreover, you can switch languages by saying key words, without having to restart the esp32 initialization with buttons all over again. There is additional command for macOS users, as I added a feature to open Apple Music. To see the full list of commands, see def parse_and_execute_command.
+1. **`server/default.py`** — say *"Jarvis"* or *"Assistant"* to wake it. The LED should stay on while you speak. Ask a few questions, and once it's clean, move on.
+2. **`server/advanced.py`** — adds full PC control. Try *"Jarvis, open Google Chrome"*, etc.
+3. **`server/final.py`** — faster responses, plays music from YouTube and Apple Music (*"Jarvis, turn on Travis Scott"* opens YouTube; an extra command opens Apple Music on macOS), and lets you switch languages by voice without re-initializing the ESP32 with the buttons. For the full command list, see `parse_and_execute_command`.
 
-When running the server, it is better to use small vosk models for fast server start. However, such models are innacurate, so after successful lauch of all funcitons, switch to larger VOSK models for better speech-to-text recognition. Don't forget to allow VSC to control the PC!
+Start with the **small** Vosk models for a fast server start; they're less accurate, so once everything works, switch to the **larger** models for better recognition. Don't forget to allow VS Code to control the PC.
 
+## Install (quick guide)
 
-## 🏁 Installation (Quick Guide)
-
-### 1. Clone repo
 ```bash
-git clone https://github.com/se1tovv/minigpt.git
-2. Download Vosk models
+# 1. Clone
+git clone https://github.com/se1tovvv/MiniJarvis.git
+cd MiniJarvis
 
-Place in /models.
+# 2. Download Vosk models, place them in /models
 
-3. Install Python deps
+# 3. Install Python deps
 pip install vosk openai
 
-4. Add OpenAI key
+# 4. Add your OpenAI key — create server/config.py:
+#    OPENAI_API_KEY = "your key"
 
-Create config.py:
+# 5. Flash the ESP32 firmware (Arduino IDE)
 
-OPENAI_API_KEY="your key"
+# 6. Run the server (start with default, then advanced, then final)
+python server/default.py
+python server/advanced.py
+python server/final.py
+```
 
-5. Flash ESP32 firmware (Arduino IDE)
-6. Run server
-python server/miniJarvis_default.py
-python server/miniJarvis_advanced.py
-python server/miniJarvis_final.py
+## Wiring
 
+> The KiCad schematic above is the source of truth. On the ESP32-32U a few GPIOs (e.g. the LEDs) can differ from the tables below — use the ESP32 pinout and reassign as needed.
 
+**INMP441 microphone**
 
-##WIRING
-
-| INMP441 Pin | ESP32 Pin | Notes              |
+| INMP441 Pin | ESP32 Pin | Notes |
 | ----------- | --------- | ------------------ |
-| VCC         | 3V3       | Power              |
-| GND         | GND       | Ground             |
-| SCK (BCLK)  | 26     | Bit clock          |
-| WS (LRCLK)  | 25     | Left/right clock   |
-| SD          | 22      | Data               |
-| L/R         | GND       | Force left channel |
+| VCC | 3V3 | Power |
+| GND | GND | Ground |
+| SCK (BCLK) | 26 | Bit clock |
+| WS (LRCLK) | 25 | Left/right clock |
+| SD | 22 | Data |
+| L/R | GND | Force left channel |
 
-| MAX98357A Pin | ESP32 Pin | Notes       |
+**MAX98357A amplifier**
+
+| MAX98357A Pin | ESP32 Pin | Notes |
 | ------------- | --------- | ----------- |
-| VIN           | 3V3       | Power       |
-| GND           | GND       | Ground      |
-| BCLK          | 14      | Bit clock   |
-| LRCLK/WSEL    | 27      | Word select |
-| DIN           | 13      | Data        |
-| SD_MODE       | not used       | Mono        |
-| GAIN          |not used     | Default     |
-| SPK+          | Speaker+  | Output      |
-| SPK−          | Speaker−  | Output      |
+| VIN | 3V3 | Power |
+| GND | GND | Ground |
+| BCLK | 14 | Bit clock |
+| LRCLK/WSEL | 27 | Word select |
+| DIN | 13 | Data |
+| SD_MODE | not used | Mono |
+| GAIN | not used | Default |
+| SPK+ | Speaker+ | Output |
+| SPK− | Speaker− | Output |
 
+**OLED (I2C)**
 
-| OLED Pin | ESP32 Pin | Notes     |
+| OLED Pin | ESP32 Pin | Notes |
 | -------- | --------- | --------- |
-| VCC      | 3V3       | Power     |
-| GND      | GND       | Ground    |
-| SDA      | 21      | I2C data  |
-| SCL      | 23      | I2C clock |
+| VCC | 3V3 | Power |
+| GND | GND | Ground |
+| SDA | 21 | I2C data |
+| SCL | 23 | I2C clock |
 
+**Buttons**
 
-| Button          | ESP32 Pin | Notes                        |
+| Button | ESP32 Pin | Notes |
 | --------------- | --------- | ---------------------------- |
-| Language  RU select | 16    | One pin → ESP32, other → GND |
-| Scroll+EN text     | 4      | One pin → ESP32, other → GND |
+| Language (RU) | 16 | One pin → ESP32, other → GND |
+| Scroll / EN text | 4 | One pin → ESP32, other → GND |
 
+**LEDs**
 
-| LED            | ESP32 Pin | Notes                                   |
+| LED | ESP32 Pin | Notes |
 | -------------- | --------- | --------------------------------------- |
-| Wi-Fi/Thinking | 2      | Anode → resistor → ESP32, cathode → GND |
-| Mic Active     | 15       | Same wiring                             |
+| Wi-Fi/Thinking | 2 | Anode → resistor → ESP32, cathode → GND |
+| Mic Active | 15 | Same wiring |
 
+**TP4056 charger**
 
-| TP4056 Pin | Connects To                   |
+| TP4056 Pin | Connects To |
 | ---------- | ----------------------------- |
-| B+         | Li-Po +                       |
-| B−         | Li-Po −                       |
-| OUT+       | Power switch → ESP32 3V3 rail |
-| OUT−       | GND                           |
-
-
-
-Note : There is a schematic in images folder. It was done in Kicad, where exact model
-from esp32u can be different from this table for some GPIOS like LEDs. Feel free to
- use ESP32 pinout to assign the GPIOS as needed.
-
+| B+ | LiPo + |
+| B− | LiPo − |
+| OUT+ | Power switch → ESP32 3V3 rail |
+| OUT− | GND |
